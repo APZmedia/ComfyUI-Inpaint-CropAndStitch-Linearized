@@ -19,15 +19,32 @@ def rescale(samples, width, height, algorithm: str):
     
     # Handle special cases that need custom implementation
     if algorithm.lower() == 'lanczos':
-        # Use PIL for Lanczos since torch doesn't have it
-        import torchvision.transforms.functional as F
+        # Improved Lanczos implementation for better precision
+        import numpy as np
         from PIL import Image
         
         linear_samples = linear_samples.movedim(1, -1)  # [B, C, H, W] -> [B, H, W, C]
-        linear_pil = F.to_pil_image(linear_samples[0].cpu())
+        
+        # Convert to numpy for PIL processing
+        linear_np = linear_samples[0].cpu().numpy()
+        linear_np = np.clip(linear_np, 0, 1)  # Ensure valid range
+        
+        # Convert to PIL with proper mode
+        if linear_np.shape[2] == 3:
+            linear_pil = Image.fromarray((linear_np * 255).astype(np.uint8), 'RGB')
+        else:
+            linear_pil = Image.fromarray((linear_np[:,:,0] * 255).astype(np.uint8), 'L')
+        
+        # Resize with Lanczos
         resized_pil = linear_pil.resize((width, height), Image.LANCZOS)
-        resized_linear = F.to_tensor(resized_pil).unsqueeze(0)
-        # Keep the same shape format as input
+        
+        # Convert back to tensor
+        resized_np = np.array(resized_pil).astype(np.float32) / 255.0
+        if len(resized_np.shape) == 2:
+            resized_np = resized_np[:, :, np.newaxis]
+        
+        resized_linear = torch.from_numpy(resized_np).unsqueeze(0)
+        resized_linear = resized_linear.movedim(-1, 1)  # [B, H, W, C] -> [B, C, H, W]
     else:
         # Map algorithm names to torch interpolation modes
         algorithm_map = {
