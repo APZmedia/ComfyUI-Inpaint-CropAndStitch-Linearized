@@ -17,10 +17,10 @@ The main enhancement is the implementation of **sRGB ↔ linear color space conv
 
 ### Original Functionality
 
-The '✂️ Inpaint Crop' and '✂️ Inpaint Stitch' nodes enable inpainting only on masked areas:
+The '✂️ Inpaint Crop (Linearized)' and '✂️ Inpaint Stitch (Linearized)' nodes enable inpainting only on masked areas:
 
-- **✂️ Inpaint Crop**: Crops the image around the masked area with context, handles pre-resizing, mask processing, and target resolution
-- **✂️ Inpaint Stitch**: Stitches the inpainted image back into the original image without altering unmasked areas
+- **✂️ Inpaint Crop (Linearized)**: Crops the image around the masked area with context, handles pre-resizing, mask processing, and target resolution
+- **✂️ Inpaint Stitch (Linearized)**: Stitches the inpainted image back into the original image without altering unmasked areas
 
 
 # Acknowledgements

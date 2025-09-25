@@ -10,8 +10,8 @@ from .inpaint_cropandstitch_old import InpaintResize
 WEB_DIRECTORY = "js"
 
 NODE_CLASS_MAPPINGS = {
-    "InpaintCropImproved": InpaintCropImproved,
-    "InpaintStitchImproved": InpaintStitchImproved,
+    "InpaintCropLinearized": InpaintCropImproved,
+    "InpaintStitchLinearized": InpaintStitchImproved,
 
     # OLD
     "InpaintCrop": InpaintCrop,
@@ -21,8 +21,8 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "InpaintCropImproved": "✂️ Inpaint Crop (Improved)",
-    "InpaintStitchImproved": "✂️ Inpaint Stitch (Improved)",
+    "InpaintCropLinearized": "✂️ Inpaint Crop (Linearized)",
+    "InpaintStitchLinearized": "✂️ Inpaint Stitch (Linearized)",
 
     # OLD
     "InpaintCrop": "(OLD 💀, use the new ✂️ Inpaint Crop node)",
