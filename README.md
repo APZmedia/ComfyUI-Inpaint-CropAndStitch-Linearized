@@ -1,29 +1,36 @@
-ComfyUI-Inpaint-CropAndStitch-Linearized
+# ComfyUI-Inpaint-CropAndStitch-Linearized
 
-Copyright (c) 2025, Pablo Apiolazza - Enhanced version with linearized rescaling
+**Enhanced version with linearized rescaling for professional color accuracy**
 
-Based on the original work by Luis Quesada Torres - https://github.com/lquesada | www.luisquesada.com
+Copyright (c) 2025, Pablo Apiolazza
 
-Check ComfyUI here: https://github.com/comfyanonymous/ComfyUI
+## Overview
 
-# Overview
+This is an enhanced variant of the original ComfyUI-Inpaint-CropAndStitch nodes by Luis Quesada Torres, with the main improvement being **linearized rescaling** for professional color accuracy.
 
-The '✂️ Inpaint Crop' and '✂️ Inpaint Stitch' nodes enable inpainting only on masked area very easily
+### Key Difference: Linearized Rescaling
 
-"✂️  Inpaint Crop" crops the image around the masked area (optionally with a context area that marks all parts relevant to the context), taking care of pre-resizing the image if desired, extending it for outpainting, filling mask holes, growing or blurring the mask, cutting around a larger context area, and resizing the cropped area to a target resolution.
+The main enhancement is the implementation of **sRGB ↔ linear color space conversion** during image resizing operations. This ensures:
 
-The cropped image can be used in any standard workflow for sampling. It can even be rescaled up with any model (please keep the aspect ratio) and hiRes-fixed and it will be retrofit in the original image.
+- **Professional Color Accuracy**: Images are converted to linear space before resizing, then back to sRGB
+- **Histogram Preservation**: Input and output histograms match perfectly (1.0000 correlation in no-op tests)
+- **Industry Standard**: Matches professional image processing workflows
+- **Zero Workflow Changes**: All improvements happen automatically under the hood
 
-Then, the "✂️  Inpaint Stitch" node stitches the inpainted image back into the original image without altering unmasked areas.
+### Original Functionality
 
-The main advantages of inpainting only in a masked area with these nodes are:
-  - It is much faster than sampling the whole image.
-  - It enables setting the right amount of context from the image for the prompt to be more accurately represented in the generated picture.
-  - It enables upscaling before sampling in order to generate more detail, then stitching back in the original picture.
-  - It enables downscaling before sampling if the area is too large, in order to avoid artifacts such as double heads or double bodies.
-  - It enables forcing a specific resolution (e.g. 1024x1024 for SDXL models).
-  - It does not modify the unmasked part of the image, not even passing it through VAE encode and decode.
-  - It takes care of blending automatically.
+The '✂️ Inpaint Crop' and '✂️ Inpaint Stitch' nodes enable inpainting only on masked areas:
+
+- **✂️ Inpaint Crop**: Crops the image around the masked area with context, handles pre-resizing, mask processing, and target resolution
+- **✂️ Inpaint Stitch**: Stitches the inpainted image back into the original image without altering unmasked areas
+
+**Main advantages:**
+- Much faster than sampling the whole image
+- Enables proper context setting for accurate prompt representation
+- Supports upscaling/downscaling before sampling
+- Forces specific resolutions (e.g., 1024x1024 for SDXL)
+- Preserves unmasked areas completely
+- Automatic blending
 
 # Video Tutorial
 
@@ -90,56 +97,19 @@ Use "InpaintModelConditioning" instead of "VAE Encode (for Inpainting)" to be ab
 
 Enable "resize to target size" and set it to a preferred resolution for your model, e.g. 512x512 for SD 1.5, 1024x1024 for SDXL or Flux.
 
-# Changelog
-## 2025-09-25 - Linearized Rescaling Update (by Pablo Apiolazza)
-- **MAJOR IMPROVEMENT**: Implemented linearized rescaling for proper sRGB color space handling
-- **Color Accuracy**: Images are now converted to linear space before resizing, then back to sRGB
-- **Histogram Preservation**: Input and output histograms now match much better (perfect 1.0000 correlation in no-op tests)
-- **Professional Quality**: Matches industry-standard image processing workflows
-- **Algorithm Support**: All algorithms (nearest, bilinear, bicubic, lanczos, box, hamming) now work with linearization
-- **Lanczos Support**: Proper Lanczos implementation using PIL for high-quality resampling
-- **Zero Workflow Changes**: All improvements happen automatically under the hood
-- **Performance**: Uses torch interpolation for better precision and speed
+# Installation
 
-## 2025-04-06
-- Published the improved version of the Crop and Stitch nodes.
-- Improved: Stitching is now way more precise. In the previous version, stitching an image back into place could shift it by one pixel. That will not happen anymore.
-- Improved: Images are now cropped before being resized. In the past, they were resized before being cropped. This triggered crashes when the input image was large and the masked area was small.
-- Improved: Images are now not extended more than necessary. In the past, they were extended x3, which was memory inefficient.
-- Improved: The cropped area will stay inside of the image if possible. In the past, the cropped area was centered around the mask and would go out of the image even if not needed.
-- Improved: Fill mask holes will now supports grayscale masks. In the past, it turned the mask into binary (yes/no only).
-- Improved: Added a hipass filter for mask that ignores values below a threshold. In the past, sometimes mask with a 0.01 value (basically black / no mask) would be considered mask, which was very confusing to users.
-- Improved: In the (now rare) case that extending out of the image is needed, instead of mirroring the original image, the edges are extended. Mirroring caused confusion among users in the past.
-- Improved: Integrated preresize and extend for outpainting in the crop node. In the past, they were external and could interact weirdly with features, e.g. expanding for outpainting on the four directions and having "fill_mask_holes" would cause the mask to be fully set across the whole image.
-- Improved: Now works when passing one mask for several images or one image for several masks.
-- UX: Streamlined many options, e.g. merged the blur and blend features in a single parameter, removed the ranged size option, removed context_expand_pixels as factor is more intuitive, etc.
-- Clean up: Marked the old nodes ("Crop", "Stitch", "Extend Image for Outpainting", and "Resize Image Before Inpainting") as obsolete. They will continue working in old workflows but will have a note in the title asking to update. In particular, there's no replacement for "Extend Image for Outpainting" and "Resize Image Before Inpainting" because those features are now integrated in the Crop node.
-## 2024-10-28
-- Added a new example workflow for inpainting with flux.
-## 2024-06-10
-- Added a new node: "Resize Image Before Inpainting", which allows increasing the resolution of the input image by a factor or to a minimum width or height to obtain higher resolution inpaintings.
-## 2024-06-08
-- Added a new node: "Extend Image for Outpainting", which allows leveraging the power of Inpaint Crop and Stitch (rescaling, blur, blend, restitching) for outpainting.
-## 2024-06-07
-- Added a blending radius for seamless inpainting.
-- Added a blur mask setting that grows and blurs the mask, providing better support.
-- Updated default to ranged size.
-## 2024-06-01
-- Force_size is now specified as separate force_width and force_height, to match any desired sampling resolution.
-- Added a new mode: ranged size, similar to free size but also takes min_width, min_height, max_width, and max_height, in order to avoid over scaling or under scaling beyond desirable limits.
-## 2024-05-15
-- Depending on the selected mode ("free size" or "forced size") some fields are hidden.
-## 2024-05-14
-- Added batch support.
-- Enabled selecting rescaling algorithm and made bicubic the default for crop, which significantly speeds up the process.
-## 2024-05-13
-- Switched from adjust_to_preferred_sizes to modes: free size and forced size. Forced scales the section rather than growing the context area to fit preferred_sizes, to be used to e.g. force 1024x1024 for inpainting.
-- Enabled internal_upscale_factor to be lower than 1 (that is, downscale), which can be used to avoid the double head issue in some models.
-- Added padding on the croppedp image to avoid artifacts when the cropped image is not multiple of (default) 32
-## 2024-05-12
-- Added internal_upscale_factor to upscale the image before sampling and then downsizes to stitch it back.
-## 2024-05-11
-- Initial commit.
+Install via ComfyUI-Manager or clone to your custom_nodes directory:
+
+```bash
+git clone https://github.com/APZmedia/ComfyUI-Inpaint-CropAndStitch-Linearized.git
+```
+
+## Best Practices
+
+- Use an inpainting model (e.g., lazymixRealAmateur_v40Inpainting)
+- Use "InpaintModelConditioning" instead of "VAE Encode (for Inpainting)" for denoise values lower than 1
+- Enable "resize to target size" and set it to your model's preferred resolution (512x512 for SD 1.5, 1024x1024 for SDXL or Flux)
 
 # Acknowledgements
 
