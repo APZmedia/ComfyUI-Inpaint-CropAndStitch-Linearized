@@ -1,14 +1,14 @@
 [project]
-name = "comfyui-inpaint-cropandstitch"
-description = "The '✂️ Inpaint Crop' and '✂️ Inpaint Stitch' nodes enable inpainting only on masked area very easily: crop the image around the masked area with the Crop node, then use any standard workflow for sampling, then connect the sampled image to the Stitch node, which will put it back in place in the original image. These nodes enable faster sampling of smaller areas and take care of downsampling and upsampling to fit specific model and resource needs."
-version = "2.1.7"
+name = "comfyui-inpaint-cropandstitch-linearized"
+description = "Enhanced ComfyUI Inpaint CropAndStitch with Linearized Rescaling by Pablo Apiolazza. The '✂️ Inpaint Crop (Linearized)' and '✂️ Inpaint Stitch (Linearized)' nodes enable inpainting only on masked areas with professional color accuracy through sRGB ↔ linear color space conversion during resizing operations."
+version = "2.2.0"
 license = { file = "LICENSE" }
 
 [project.urls]
-Repository = "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch"
+Repository = "https://github.com/APZmedia/ComfyUI-Inpaint-CropAndStitch-Linearized"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
-PublisherId = "lquesada"
-DisplayName = "ComfyUI-Inpaint-CropAndStitch"
+PublisherId = "APZmedia"
+DisplayName = "ComfyUI-Inpaint-CropAndStitch-Linearized"
 Icon = ""
