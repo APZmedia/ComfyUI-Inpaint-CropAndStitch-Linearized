@@ -8,9 +8,58 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter, grey_dilation, binary_closing, binary_fill_holes
 
 
-def rescale_i(samples, width, height, algorithm: str):
+def srgb_to_linear_accurate(samples):
+    """Convert sRGB to linear color space with proper transfer function.
+    
+    Uses the exact sRGB transfer function instead of simplified gamma 2.2.
+    This preserves color accuracy better during interpolation.
+    """
+    # Clamp to valid range to avoid numerical issues
+    samples = torch.clamp(samples, 0.0, 1.0)
+    
+    # Apply piecewise sRGB to linear conversion
+    linear = torch.where(
+        samples <= 0.04045,
+        samples / 12.92,
+        torch.pow((samples + 0.055) / 1.055, 2.4)
+    )
+    return linear
+
+
+def linear_to_srgb_accurate(samples):
+    """Convert linear color space to sRGB with proper transfer function.
+    
+    Uses the exact inverse sRGB transfer function instead of simplified gamma 1/2.2.
+    This preserves color accuracy better after interpolation.
+    """
+    # Clamp to valid range to avoid numerical issues
+    samples = torch.clamp(samples, 0.0, 1.0)
+    
+    # Apply piecewise linear to sRGB conversion
+    srgb = torch.where(
+        samples <= 0.0031308,
+        12.92 * samples,
+        1.055 * torch.pow(samples, 1/2.4) - 0.055
+    )
+    return torch.clamp(srgb, 0.0, 1.0)
+
+
+def rescale_i(samples, width, height, algorithm: str, use_accurate_srgb: bool = True):
+    """Rescale images with proper color space handling.
+    
+    Args:
+        samples: Input image tensor [B, H, W, C]
+        width: Target width
+        height: Target height
+        algorithm: Interpolation algorithm name
+        use_accurate_srgb: If True, use accurate sRGB conversion. If False, use simple gamma 2.2
+    """
     # Convert sRGB to linear space for proper interpolation
-    linear_samples = torch.pow(samples, 2.2)
+    if use_accurate_srgb:
+        linear_samples = srgb_to_linear_accurate(samples)
+    else:
+        # Fallback to simple gamma for backwards compatibility
+        linear_samples = torch.pow(samples, 2.2)
     
     # Use torch interpolation for better precision
     linear_samples = linear_samples.movedim(-1, 1)  # [B, H, W, C] -> [B, C, H, W]
@@ -74,7 +123,11 @@ def rescale_i(samples, width, height, algorithm: str):
     resized_linear = resized_linear.movedim(1, -1)  # [B, C, H, W] -> [B, H, W, C]
     
     # Convert back to sRGB
-    srgb_samples = torch.pow(resized_linear, 1/2.2)
+    if use_accurate_srgb:
+        srgb_samples = linear_to_srgb_accurate(resized_linear)
+    else:
+        # Fallback to simple gamma for backwards compatibility
+        srgb_samples = torch.pow(resized_linear, 1/2.2)
     
     return srgb_samples
 
@@ -88,7 +141,7 @@ def rescale_m(samples, width, height, algorithm: str):
     return samples
 
 
-def preresize_imm(image, mask, optional_context_mask, downscale_algorithm, upscale_algorithm, preresize_mode, preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height):
+def preresize_imm(image, mask, optional_context_mask, downscale_algorithm, upscale_algorithm, preresize_mode, preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height, use_accurate_srgb):
     current_width, current_height = image.shape[2], image.shape[1]  # Image size [batch, height, width, channels]
     
     if preresize_mode == "ensure minimum resolution":
@@ -103,7 +156,7 @@ def preresize_imm(image, mask, optional_context_mask, downscale_algorithm, upsca
         target_width = int(current_width * scale_factor)
         target_height = int(current_height * scale_factor)
 
-        image = rescale_i(image, target_width, target_height, upscale_algorithm)
+        image = rescale_i(image, target_width, target_height, upscale_algorithm, use_accurate_srgb)
         mask = rescale_m(mask, target_width, target_height, 'bilinear')
         optional_context_mask = rescale_m(optional_context_mask, target_width, target_height, 'bilinear')
         
@@ -135,7 +188,7 @@ def preresize_imm(image, mask, optional_context_mask, downscale_algorithm, upsca
         target_width = int(current_width * scale_factor)
         target_height = int(current_height * scale_factor)
 
-        image = rescale_i(image, target_width, target_height, rescale_algorithm)
+        image = rescale_i(image, target_width, target_height, rescale_algorithm, use_accurate_srgb)
         mask = rescale_m(mask, target_width, target_height, 'nearest') # Always nearest for efficiency
         optional_context_mask = rescale_m(optional_context_mask, target_width, target_height, 'nearest') # Always nearest for efficiency
         
@@ -155,7 +208,7 @@ def preresize_imm(image, mask, optional_context_mask, downscale_algorithm, upsca
         target_width = int(current_width * scale_factor_max)
         target_height = int(current_height * scale_factor_max)
 
-        image = rescale_i(image, target_width, target_height, downscale_algorithm)
+        image = rescale_i(image, target_width, target_height, downscale_algorithm, use_accurate_srgb)
         mask = rescale_m(mask, target_width, target_height, 'nearest')  # Always nearest for efficiency
         optional_context_mask = rescale_m(optional_context_mask, target_width, target_height, 'nearest')  # Always nearest for efficiency
 
@@ -359,7 +412,7 @@ def pad_to_multiple(value, multiple):
     return int(math.ceil(value / multiple) * multiple)
 
 
-def crop_magic_im(image, mask, x, y, w, h, target_w, target_h, padding, downscale_algorithm, upscale_algorithm):
+def crop_magic_im(image, mask, x, y, w, h, target_w, target_h, padding, downscale_algorithm, upscale_algorithm, use_accurate_srgb):
     image = image.clone()
     mask = mask.clone()
     
@@ -504,16 +557,16 @@ def crop_magic_im(image, mask, x, y, w, h, target_w, target_h, padding, downscal
     # Step 7: Resize image and mask to the target width and height
     # Decide which algorithm to use based on the scaling direction
     if target_w > ctc_w or target_h > ctc_h:  # Upscaling
-        cropped_image = rescale_i(cropped_image, target_w, target_h, upscale_algorithm)
+        cropped_image = rescale_i(cropped_image, target_w, target_h, upscale_algorithm, use_accurate_srgb)
         cropped_mask = rescale_m(cropped_mask, target_w, target_h, upscale_algorithm)
     else:  # Downscaling
-        cropped_image = rescale_i(cropped_image, target_w, target_h, downscale_algorithm)
+        cropped_image = rescale_i(cropped_image, target_w, target_h, downscale_algorithm, use_accurate_srgb)
         cropped_mask = rescale_m(cropped_mask, target_w, target_h, downscale_algorithm)
 
     return canvas_image, cto_x, cto_y, cto_w, cto_h, cropped_image, cropped_mask, ctc_x, ctc_y, ctc_w, ctc_h
 
 
-def stitch_magic_im(canvas_image, inpainted_image, mask, ctc_x, ctc_y, ctc_w, ctc_h, cto_x, cto_y, cto_w, cto_h, downscale_algorithm, upscale_algorithm):
+def stitch_magic_im(canvas_image, inpainted_image, mask, ctc_x, ctc_y, ctc_w, ctc_h, cto_x, cto_y, cto_w, cto_h, downscale_algorithm, upscale_algorithm, use_accurate_srgb):
     canvas_image = canvas_image.clone()
     inpainted_image = inpainted_image.clone()
     mask = mask.clone()
@@ -521,10 +574,10 @@ def stitch_magic_im(canvas_image, inpainted_image, mask, ctc_x, ctc_y, ctc_w, ct
     # Resize inpainted image and mask to match the context size
     _, h, w, _ = inpainted_image.shape
     if ctc_w > w or ctc_h > h:  # Upscaling
-        resized_image = rescale_i(inpainted_image, ctc_w, ctc_h, upscale_algorithm)
+        resized_image = rescale_i(inpainted_image, ctc_w, ctc_h, upscale_algorithm, use_accurate_srgb)
         resized_mask = rescale_m(mask, ctc_w, ctc_h, upscale_algorithm)
     else:  # Downscaling
-        resized_image = rescale_i(inpainted_image, ctc_w, ctc_h, downscale_algorithm)
+        resized_image = rescale_i(inpainted_image, ctc_w, ctc_h, downscale_algorithm, use_accurate_srgb)
         resized_mask = rescale_m(mask, ctc_w, ctc_h, downscale_algorithm)
 
     # Clamp mask to [0, 1] and expand to match image channels
@@ -556,6 +609,7 @@ class InpaintCropImproved:
                 # Resize algorithms
                 "downscale_algorithm": (["nearest", "bilinear", "bicubic", "lanczos", "box", "hamming"], {"default": "bilinear"}),
                 "upscale_algorithm": (["nearest", "bilinear", "bicubic", "lanczos", "box", "hamming"], {"default": "bicubic"}),
+                "srgb_conversion": (["accurate", "simple"], {"default": "accurate"}),
 
                 # Pre-resize input image
                 "preresize": ("BOOLEAN", {"default": False, "tooltip": "Resize the original image before processing."}),
@@ -664,7 +718,7 @@ class InpaintCropImproved:
     #'''
 
  
-    def inpaint_crop(self, image, downscale_algorithm, upscale_algorithm, preresize, preresize_mode, preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height, extend_for_outpainting, extend_up_factor, extend_down_factor, extend_left_factor, extend_right_factor, mask_hipass_filter, mask_fill_holes, mask_expand_pixels, mask_invert, mask_blend_pixels, context_from_mask_extend_factor, output_resize_to_target_size, output_target_width, output_target_height, output_padding, mask=None, optional_context_mask=None):
+    def inpaint_crop(self, image, downscale_algorithm, upscale_algorithm, srgb_conversion, preresize, preresize_mode, preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height, extend_for_outpainting, extend_up_factor, extend_down_factor, extend_left_factor, extend_right_factor, mask_hipass_filter, mask_fill_holes, mask_expand_pixels, mask_invert, mask_blend_pixels, context_from_mask_extend_factor, output_resize_to_target_size, output_target_width, output_target_height, output_padding, mask=None, optional_context_mask=None):
         image = image.clone()
         if mask is not None:
             mask = mask.clone()
@@ -743,6 +797,7 @@ class InpaintCropImproved:
         result_stitcher = {
             'downscale_algorithm': downscale_algorithm,
             'upscale_algorithm': upscale_algorithm,
+            'srgb_conversion': srgb_conversion,
             'blend_pixels': mask_blend_pixels,
             'canvas_to_orig_x': [],
             'canvas_to_orig_y': [],
@@ -768,7 +823,7 @@ class InpaintCropImproved:
             one_optional_context_mask = optional_context_mask[b].unsqueeze(0)
 
             outputs = self.inpaint_crop_single_image(
-                one_image, downscale_algorithm, upscale_algorithm, preresize, preresize_mode,
+                one_image, downscale_algorithm, upscale_algorithm, srgb_conversion, preresize, preresize_mode,
                 preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height,
                 extend_for_outpainting, extend_up_factor, extend_down_factor, extend_left_factor, extend_right_factor,
                 mask_hipass_filter, mask_fill_holes, mask_expand_pixels, mask_invert, mask_blend_pixels,
@@ -803,9 +858,11 @@ class InpaintCropImproved:
         return result_stitcher, result_image, result_mask, *[debug_outputs[name] for name in self.RETURN_NAMES if name.startswith("DEBUG_")]
 
 
-    def inpaint_crop_single_image(self, image, downscale_algorithm, upscale_algorithm, preresize, preresize_mode, preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height, extend_for_outpainting, extend_up_factor, extend_down_factor, extend_left_factor, extend_right_factor, mask_hipass_filter, mask_fill_holes, mask_expand_pixels, mask_invert, mask_blend_pixels, context_from_mask_extend_factor, output_resize_to_target_size, output_target_width, output_target_height, output_padding, mask, optional_context_mask):
+    def inpaint_crop_single_image(self, image, downscale_algorithm, upscale_algorithm, srgb_conversion, preresize, preresize_mode, preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height, extend_for_outpainting, extend_up_factor, extend_down_factor, extend_left_factor, extend_right_factor, mask_hipass_filter, mask_fill_holes, mask_expand_pixels, mask_invert, mask_blend_pixels, context_from_mask_extend_factor, output_resize_to_target_size, output_target_width, output_target_height, output_padding, mask, optional_context_mask):
+        use_accurate_srgb = srgb_conversion == "accurate"
+
         if preresize:
-            image, mask, optional_context_mask = preresize_imm(image, mask, optional_context_mask, downscale_algorithm, upscale_algorithm, preresize_mode, preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height)
+            image, mask, optional_context_mask = preresize_imm(image, mask, optional_context_mask, downscale_algorithm, upscale_algorithm, preresize_mode, preresize_min_width, preresize_min_height, preresize_max_width, preresize_max_height, use_accurate_srgb)
         if self.DEBUG_MODE:
             DEBUG_preresize_image = image.clone()
             DEBUG_preresize_mask = mask.clone()
@@ -872,9 +929,9 @@ class InpaintCropImproved:
             DEBUG_context_with_context_mask_location = debug_context_location_in_image(image, x, y, w, h)
 
         if not output_resize_to_target_size:
-            canvas_image, cto_x, cto_y, cto_w, cto_h, cropped_image, cropped_mask, ctc_x, ctc_y, ctc_w, ctc_h = crop_magic_im(image, mask, x, y, w, h, w, h, output_padding, downscale_algorithm, upscale_algorithm)
+            canvas_image, cto_x, cto_y, cto_w, cto_h, cropped_image, cropped_mask, ctc_x, ctc_y, ctc_w, ctc_h = crop_magic_im(image, mask, x, y, w, h, w, h, output_padding, downscale_algorithm, upscale_algorithm, use_accurate_srgb)
         else: # if output_resize_to_target_size:
-            canvas_image, cto_x, cto_y, cto_w, cto_h, cropped_image, cropped_mask, ctc_x, ctc_y, ctc_w, ctc_h = crop_magic_im(image, mask, x, y, w, h, output_target_width, output_target_height, output_padding, downscale_algorithm, upscale_algorithm)
+            canvas_image, cto_x, cto_y, cto_w, cto_h, cropped_image, cropped_mask, ctc_x, ctc_y, ctc_w, ctc_h = crop_magic_im(image, mask, x, y, w, h, output_target_width, output_target_height, output_padding, downscale_algorithm, upscale_algorithm, use_accurate_srgb)
         if self.DEBUG_MODE:
             DEBUG_context_to_target = context.clone()
             DEBUG_context_to_target_location = debug_context_location_in_image(image, x, y, w, h)
@@ -969,6 +1026,8 @@ class InpaintStitchImproved:
     def inpaint_stitch_single_image(self, stitcher, inpainted_image):
         downscale_algorithm = stitcher['downscale_algorithm']
         upscale_algorithm = stitcher['upscale_algorithm']
+        srgb_conversion = stitcher['srgb_conversion']
+        use_accurate_srgb = srgb_conversion == "accurate"
         canvas_image = stitcher['canvas_image']
 
         ctc_x = stitcher['cropped_to_canvas_x']
@@ -983,6 +1042,6 @@ class InpaintStitchImproved:
 
         mask = stitcher['cropped_mask_for_blend']  # shape: [1, H, W]
 
-        output_image = stitch_magic_im(canvas_image, inpainted_image, mask, ctc_x, ctc_y, ctc_w, ctc_h, cto_x, cto_y, cto_w, cto_h, downscale_algorithm, upscale_algorithm)
+        output_image = stitch_magic_im(canvas_image, inpainted_image, mask, ctc_x, ctc_y, ctc_w, ctc_h, cto_x, cto_y, cto_w, cto_h, downscale_algorithm, upscale_algorithm, use_accurate_srgb)
 
         return (output_image,)
