@@ -3,12 +3,15 @@ import { app } from "../../scripts/app.js";
 // Some fragments of this code are from https://github.com/LucianoCirino/efficiency-nodes-comfyui
 
 function inpaintCropAndStitchHandler(node) {
-    if (node.comfyClass == "InpaintCropImproved") {
-        toggleWidget(node, findWidgetByName(node, "preresize_mode"));
-        toggleWidget(node, findWidgetByName(node, "preresize_min_width"));
-        toggleWidget(node, findWidgetByName(node, "preresize_min_height"));
-        toggleWidget(node, findWidgetByName(node, "preresize_max_width"));
-        toggleWidget(node, findWidgetByName(node, "preresize_max_height"));
+    if (node.comfyClass == "InpaintCropLinearized") {
+        // First hide all preresize fields
+        toggleWidget(node, findWidgetByName(node, "preresize_mode"), false);
+        toggleWidget(node, findWidgetByName(node, "preresize_min_width"), false);
+        toggleWidget(node, findWidgetByName(node, "preresize_min_height"), false);
+        toggleWidget(node, findWidgetByName(node, "preresize_max_width"), false);
+        toggleWidget(node, findWidgetByName(node, "preresize_max_height"), false);
+        
+        // Only show fields if preresize is enabled
         if (findWidgetByName(node, "preresize").value == true) {
             toggleWidget(node, findWidgetByName(node, "preresize_mode"), true);
             if (findWidgetByName(node, "preresize_mode").value == "ensure minimum resolution") {

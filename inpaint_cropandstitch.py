@@ -119,6 +119,9 @@ def rescale_i(samples, width, height, algorithm: str, use_accurate_srgb: bool = 
                 size=(height, width), 
                 mode=mode
             )
+        
+        # Clamp to prevent NaN and out-of-range values
+        resized_linear = torch.clamp(resized_linear, 0.0, 1.0)
     
     resized_linear = resized_linear.movedim(1, -1)  # [B, C, H, W] -> [B, H, W, C]
     
@@ -128,6 +131,9 @@ def rescale_i(samples, width, height, algorithm: str, use_accurate_srgb: bool = 
     else:
         # Fallback to simple gamma for backwards compatibility
         srgb_samples = torch.pow(resized_linear, 1/2.2)
+    
+    # Final clamp to ensure valid range
+    srgb_samples = torch.clamp(srgb_samples, 0.0, 1.0)
     
     return srgb_samples
 
