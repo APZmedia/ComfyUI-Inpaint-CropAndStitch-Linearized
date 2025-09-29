@@ -6,8 +6,7 @@ license = { file = "LICENSE" }
 requires-python = ">=3.9"
 dependencies = [
     "torch",
-    "comfy-core",
-    "scikit-image"
+    "comfy-core"
 ]
 
 [project.urls]
